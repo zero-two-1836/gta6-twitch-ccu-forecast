@@ -42,14 +42,21 @@ market had not unlocked yet, e.g. Hollow Knight: Silksong 164) explodes
 its hour-1 level is to the target's, with a Gaussian kernel on log
 hour-1 viewers (bandwidth 1.0).
 
-Centre: a blend (85% / 15%) of the kernel-weighted median of `r_h` and
-a per-hour log-log OLS of `ln(viewers_h)` on `ln(viewers_1)`.
+Centre: a blend (55% / 45%) of the kernel-weighted median of `r_h` and
+a per-hour weighted multi-feature OLS of `ln(viewers_h)` on
+`[1, ln(viewers_1), Thursday?, Friday?]` (kernel-weighted). The weekday
+terms matter because the day curve is a timezone wave: a Thursday
+launch (GTA VI's day) has a dead workday morning and a strong
+post-work evening, while a Friday launch runs into the weekend.
 Spread: the kernel-weighted quantiles of `r_h`, recentered on the
 blended centre and rescaled toward a blend of the kernel IQR spread and
-the OLS residual spread, clamped to a log-sd of [0.30, 0.50] so the
-quantiles stay honest — never collapsing, never exploding. Both the
-median and the spread curves are lightly smoothed across neighbouring
-hours.
+the OLS residual spread, clamped to a log-sd of [0.30, 0.45] so the
+quantiles stay honest — never collapsing, never exploding. The
+rescaling is done separately for the upper and lower halves of the
+shape, so the forecast keeps the launches' natural skew (the upper
+tail is heavier: a launch can always explode upward far more than it
+can fall). Both the median and the spread curves are lightly smoothed
+across neighbouring hours.
 
 ## How it was checked (leave-one-out, no peeking at the final)
 
@@ -62,17 +69,30 @@ against its real hours 2–24.
 
 | model | mean pinball loss (28 big launches, hour-1 ≥ 10k) | beats house baseline |
 |---|---|---|
-| this entry (kernel + 15% OLS, spread cap 0.50) | **0.255** | 20/28 launches |
+| this entry (v2: kernel + 45% multi-feature OLS, asymmetric spread, cap 0.45) | **0.245** | 24/28 launches |
+| v1 (kernel + 15% single-feature OLS, symmetric spread, cap 0.50) | 0.255 | 20/28 |
 | kernel only | 0.269 | 23/28 |
 | house baseline (persistence, spread 0.15·√h) | 0.351 | — |
 
 On the 16 launches with hour-1 ≥ 100k — the size regime GTA VI will
-be in — this entry scores **0.212** vs the baseline's 0.261. The house
-baseline scores ~0.387 on the kit's four practice cases; the entry
-beats it on every size regime tested. (A single launch-day curve is
-noisy — Halo Infinite, whose multiplayer launched weeks before its
-campaign, is the worst case at 0.71 — but the mean over 28 launches is
-what the tuning optimised.)
+be in — this entry scores **0.202** vs the baseline's 0.261 (v1: 0.212);
+on the 11 clean (no early-access) launches in that regime it scores
+**0.203** (v1: 0.212). The house baseline scores ~0.387 on the kit's
+four practice cases; the entry beats it on every size regime tested.
+(A single launch-day curve is noisy — Halo Infinite, whose multiplayer
+launched weeks before its campaign, is the worst case at 0.71 — but
+the mean over 28 launches is what the tuning optimised.)
+
+What was tried and rejected on the same leave-one-out (all worse than
+v2): a finer grid over bandwidth / OLS blend / spread floor-cap
+(±0.001, noise); excluding or downweighting early-access-contaminated
+launches (worse: the kernel already handles regime via hour-1);
+local-linear centre; residual-quantile spread; nested conformal
+per-level calibration (too noisy with 37 launches); a global median
+shift; a second kernel dimension on pre-release activity; weekday
+weighting; interaction terms. The v2 changes that survived: the
+weekday-aware multi-feature OLS centre and the asymmetric spread
+rescale, each improving every size regime tested.
 
 Two runs on the same case write byte-identical output (verified on the
 kit's four practice cases, ~0.25 s for all four). Output format:
